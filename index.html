@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>College Event Registration Portal</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="script.js"></script>
+  <script>
+    var API = 'https://your-render-url.onrender.com';
+
+    var h          = React.createElement;
+    var useState   = React.useState;
+    var useEffect  = React.useEffect;
+
+    // ── LOGIN PAGE ─────────────────────────────────────────────────────────────
+    function LoginPage(props) {
+      var fs = useState({ username: '', password: '' });
+      var form = fs[0]; var setForm = fs[1];
+      var es = useState(''); var error = es[0]; var setError = es[1];
+      var ls = useState(false); var loading = ls[0]; var setLoading = ls[1];
+
+      function update(field) {
+        return function(e) {
+          var next = { username: form.username, password: form.password };
+          next[field] = e.target.value;
+          setForm(next);
+        };
+      }
+
+      function handleLogin() {
+        if (!form.username || !form.password) { setError('Please fill in both fields.'); return; }
+        setLoading(true); setError('');
+        apiRequest(API + '/api/login', 'POST', form)
+          .then(function(data) {
+            setLoading(false);
+            props.onLogin(data.username, data.role);
+          })
+          .catch(function() { setLoading(false); setError('Invalid username or password.'); });
+      }
+
+      function onKey(e) { if (e.key === 'Enter') handleLogin(); }
+
+      return h('div', { className: 'login-page' },
+        h('div', { className: 'login-box' },
+          h('h1', null, '🎓 Event Portal'),
+          h('p',  null, 'College Event Registration System'),
+          h('div', { className: 'field' },
+            h('label', null, 'Username'),
+            h('input', { type: 'text', placeholder: 'Enter username', value: form.username, onChange: update('username'), onKeyDown: onKey })
+          ),
+          h('div', { className: 'field' },
+            h('label', null, 'Password'),
+            h('input', { type: 'password', placeholder: 'Enter password', value: form.password, onChange: update('password'), onKeyDown: onKey })
+          ),
+          error ? h('p', { className: 'error-msg' }, error) : null,
+          h('button', { className: 'btn btn-primary btn-full', onClick: handleLogin, disabled: loading },
+            loading ? 'Signing in…' : 'Sign In'
+          ),
+          h('p', { className: 'hint' },
+            'Admin: ', h('code', null, 'admin'), ' / ', h('code', null, 'admin123'),
+            h('br'),
+            'Student: ', h('code', null, 'student'), ' / ', h('code', null, 'student123')
+          )
+        )
+      );
+    }
+
+    // ── REGISTER MODAL ─────────────────────────────────────────────────────────
+    function RegisterModal(props) {
+      var event = props.event;
+      var fs = useState({ name: '', email: '' });
+      var form = fs[0]; var setForm = fs[1];
+      var es = useState(''); var error = es[0]; var setError = es[1];
+      var ls = useState(false); var loading = ls[0]; var setLoading = ls[1];
+
+      function update(field) {
+        return function(e) {
+          var next = { name: form.name, email: form.email };
+          next[field] = e.target.value;
+          setForm(next);
+        };
+      }
+
+      function handleRegister() {
+        var err = validateRegistration(form.name, form.email);
+        if (err) { setError(err); return; }
+        setLoading(true); setError('');
+        apiRequest(API + '/api/events/' + event.id + '/register', 'POST', form)
+          .then(function() { setLoading(false); props.onSuccess(); })
+          .catch(function(e) { setLoading(false); setError(e.message); });
+      }
+
+      return h('div', { className: 'overlay', onClick: props.onClose },
+        h('div', { className: 'modal', onClick: function(e) { e.stopPropagation(); } },
+          h('h3', null, 'Register for Event'),
+          h('p', { className: 'modal-event' }, '📅 ' + event.name + ' · ' + formatDate(event.date)),
+          h('div', { className: 'field' },
+            h('label', null, 'Your Name'),
+            h('input', { type: 'text', placeholder: 'Full name', value: form.name, onChange: update('name') })
+          ),
+          h('div', { className: 'field' },
+            h('label', null, 'Email Address'),
+            h('input', { type: 'email', placeholder: 'your@email.com', value: form.email, onChange: update('email') })
+          ),
+          error ? h('p', { className: 'error-msg' }, error) : null,
+          h('div', { className: 'modal-actions' },
+            h('button', { className: 'btn btn-ghost', onClick: props.onClose }, 'Cancel'),
+            h('button', { className: 'btn btn-primary', onClick: handleRegister, disabled: loading },
+              loading ? 'Registering…' : 'Confirm'
+            )
+          )
+        )
+      );
+    }
+
+    // ── ADD EVENT FORM (admin only) ────────────────────────────────────────────
+    function AddEventForm(props) {
+      var blank = { name: '', date: '', venue: '', seats: '' };
+      var fs = useState(blank); var form = fs[0]; var setForm = fs[1];
+      var es = useState('');    var error = es[0]; var setError = es[1];
+
+      function update(field) {
+        return function(e) {
+          var next = { name: form.name, date: form.date, venue: form.venue, seats: form.seats };
+          next[field] = e.target.value;
+          setForm(next);
+        };
+      }
+
+      function handleAdd() {
+        var err = validateEvent(form);
+        if (err) { setError(err); return; }
+        setError('');
+        apiRequest(API + '/api/events', 'POST', form)
+          .then(function() { setForm(blank); props.onAdded(); })
+          .catch(function(e) { setError(e.message); });
+      }
+
+      return h('div', { className: 'add-form' },
+        h('h2', null, '+ Add New Event'),
+        h('div', { className: 'form-row' },
+          h('div', { className: 'field' },
+            h('label', null, 'Event Name'),
+            h('input', { type: 'text', placeholder: 'e.g. Tech Symposium', value: form.name, onChange: update('name') })
+          ),
+          h('div', { className: 'field' },
+            h('label', null, 'Date'),
+            h('input', { type: 'date', value: form.date, onChange: update('date') })
+          ),
+          h('div', { className: 'field' },
+            h('label', null, 'Venue'),
+            h('input', { type: 'text', placeholder: 'e.g. Auditorium', value: form.venue, onChange: update('venue') })
+          ),
+          h('div', { className: 'field' },
+            h('label', null, 'Seats'),
+            h('input', { type: 'number', placeholder: '100', value: form.seats, onChange: update('seats') })
+          )
+        ),
+        error ? h('p', { className: 'error-msg' }, error) : null,
+        h('button', { className: 'btn btn-primary', onClick: handleAdd }, 'Add Event')
+      );
+    }
+
+    // ── EVENTS TAB ─────────────────────────────────────────────────────────────
+    function EventsTab(props) {
+      var ms = useState(null); var modalEvent = ms[0]; var setModalEvent = ms[1];
+
+      function handleDelete(id) {
+        apiRequest(API + '/api/events/' + id, 'DELETE')
+          .then(function() { props.onRefresh(); })
+          .catch(function(e) { alert(e.message); });
+      }
+
+      return h('div', null,
+        props.role === 'admin' ? h(AddEventForm, { onAdded: props.onRefresh }) : null,
+
+        h('div', { className: 'section-header' },
+          h('h2', null, 'Upcoming Events'),
+          h('span', { style: { fontSize: '0.8rem', color: 'var(--muted)' } }, props.events.length + ' events')
+        ),
+
+        props.events.length === 0
+          ? h('p', { className: 'empty' }, 'No events yet.')
+          : h('div', { className: 'events-grid' },
+              props.events.map(function(ev) {
+                var pct  = seatPercent(ev.registered, ev.seats);
+                var full = isFull(ev);
+                return h('div', { key: ev.id, className: 'event-card' },
+                  h('div', { className: 'event-name' }, ev.name),
+                  h('div', { className: 'event-meta' },
+                    h('span', null, '📅 ' + formatDate(ev.date)),
+                    h('span', null, '📍 ' + ev.venue)
+                  ),
+                  h('div', { className: 'seats-bar-bg' },
+                    h('div', { className: 'seats-bar-fill' + (full ? ' full' : ''), style: { width: pct + '%' } })
+                  ),
+                  h('div', { className: 'seats-text' },
+                    full
+                      ? '⚠ Fully booked'
+                      : ev.available + ' of ' + ev.seats + ' seats available'
+                  ),
+                  h('div', { className: 'card-actions' },
+                    props.role === 'student'
+                      ? h('button', {
+                          className: 'btn btn-green',
+                          disabled: full,
+                          onClick: function() { setModalEvent(ev); }
+                        }, full ? 'Full' : 'Register')
+                      : null,
+                    props.role === 'admin'
+                      ? h('button', {
+                          className: 'btn btn-red',
+                          onClick: function() { handleDelete(ev.id); }
+                        }, 'Delete')
+                      : null
+                  )
+                );
+              })
+            ),
+
+        modalEvent
+          ? h(RegisterModal, {
+              event: modalEvent,
+              onClose: function() { setModalEvent(null); },
+              onSuccess: function() { setModalEvent(null); props.onRefresh(); }
+            })
+          : null
+      );
+    }
+
+    // ── REGISTRATIONS TAB ──────────────────────────────────────────────────────
+    function RegistrationsTab(props) {
+      var regs = props.registrations;
+      if (regs.length === 0) return h('p', { className: 'empty' }, 'No registrations yet.');
+      return h('div', { className: 'table-wrap' },
+        h('table', null,
+          h('thead', null,
+            h('tr', null,
+              h('th', null, '#'),
+              h('th', null, 'Name'),
+              h('th', null, 'Email'),
+              h('th', null, 'Event')
+            )
+          ),
+          h('tbody', null,
+            regs.map(function(r, i) {
+              return h('tr', { key: r.id },
+                h('td', null, i + 1),
+                h('td', null, r.name),
+                h('td', null, r.email),
+                h('td', null, r.event_name)
+              );
+            })
+          )
+        )
+      );
+    }
+
+    // ── DASHBOARD ──────────────────────────────────────────────────────────────
+    function Dashboard(props) {
+      var ts = useState('events');  var tab = ts[0]; var setTab = ts[1];
+      var es = useState([]);        var events = es[0]; var setEvents = es[1];
+      var rs = useState([]);        var regs = rs[0];   var setRegs   = rs[1];
+
+      function fetchAll() {
+        apiRequest(API + '/api/events', 'GET')
+          .then(function(d) { setEvents(d.events); })
+          .catch(function(e) { console.error(e); });
+        apiRequest(API + '/api/registrations', 'GET')
+          .then(function(d) { setRegs(d.registrations); })
+          .catch(function(e) { console.error(e); });
+      }
+
+      useEffect(function() { fetchAll(); }, []);
+
+      return h('div', null,
+        h('header', { className: 'header' },
+          h('span', { className: 'header-title' }, '🎓 Event Portal'),
+          h('div', { className: 'header-right' },
+            h('span', { className: 'user-info' }, '👤 ' + props.username),
+            h('span', { className: 'role-badge role-' + props.role }, props.role),
+            h('button', { className: 'btn btn-ghost', onClick: props.onLogout }, 'Sign Out')
+          )
+        ),
+
+        h('div', { className: 'tabs' },
+          h('button', { className: 'tab' + (tab === 'events' ? ' active' : ''), onClick: function() { setTab('events'); } }, 'Events'),
+          h('button', { className: 'tab' + (tab === 'regs'   ? ' active' : ''), onClick: function() { setTab('regs');   } }, 'Registrations' + (regs.length ? ' (' + regs.length + ')' : ''))
+        ),
+
+        h('main', { className: 'main' },
+          tab === 'events'
+            ? h(EventsTab, { events: events, role: props.role, onRefresh: fetchAll })
+            : h(RegistrationsTab, { registrations: regs })
+        )
+      );
+    }
+
+    // ── ROOT APP ───────────────────────────────────────────────────────────────
+    function App() {
+      var us = useState(null); var user = us[0]; var setUser = us[1];
+      var rs = useState(null); var role = rs[0]; var setRole = rs[1];
+
+      if (user) {
+        return h(Dashboard, {
+          username: user,
+          role: role,
+          onLogout: function() { setUser(null); setRole(null); }
+        });
+      }
+      return h(LoginPage, {
+        onLogin: function(u, r) { setUser(u); setRole(r); }
+      });
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(h(App, null));
+  </script>
+</body>
+</html>
